@@ -1,101 +1,90 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
-import NoteList from "@/components/NoteList/NoteList";
-import SearchBox from "@/components/SearchBox/SearchBox";
-import Pagination from "@/components/Pagination/Pagination";
-import NoteModal from "@/components/Modal/Modal";
-import NoteForm from "@/components/NoteForm/NoteForm";
-import { fetchNotes } from "@/lib/api";
-import type { FetchNotesResponse } from "@/lib/api";
-import type { FilterTagType } from "@/types/note";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { useDebouncedCallback } from "use-debounce";
 import css from "./NotesPage.module.css";
+import NoteList from "@/components/NoteList/NoteList";
+import { fetchNotes } from "@/lib/api";
+import type { Note } from "../../../../types/note";
+import type { FetchNotesResponse } from "@/lib/api";
+import SearchBox from "@/components/SearchBox/SearchBox";
+import Modal from "@/components/CreateNoteModal/CreateNoteModal";
+import Pagination from "@/components/Pagination/Pagination";
+import NoteForm from "@/components/NoteForm/NoteForm";
+import Loader from "@/components/Loader/Loader";
+import ErrorMessage from "@/components/ErrorMessage/ErrorMessage";
+import toast, { Toaster } from "react-hot-toast";
 
-const useDebounce = (value: string, delay: number) => {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-    return () => clearTimeout(handler);
-  }, [value, delay]);
-  return debouncedValue;
+type NotesClientProps = {
+  initialData: FetchNotesResponse;
+  tag: string;
 };
 
-interface NotesClientProps {
-  initialData: FetchNotesResponse;
-  initialTag: FilterTagType;
-}
-
-const NotesClient: React.FC<NotesClientProps> = ({
-  initialData,
-  initialTag,
-}) => {
+export default function NotesClient({ initialData, tag }: NotesClientProps) {
+  const [search, setSearch] = useState("");
+  const [inputValue, setInputValue] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const perPage = 12;
 
-  const debouncedSearchTerm = useDebounce(searchTerm, 300);
+  useEffect(() => {
+    setSearch("");
+    setCurrentPage(1);
+  }, [tag]);
 
-  const {
-    data: notesData,
-    isLoading,
-    error,
-  } = useQuery({
-    queryKey: ["notes", currentPage, debouncedSearchTerm, initialTag],
-    queryFn: () =>
-      fetchNotes({
-        page: currentPage,
-        perPage,
-        search: debouncedSearchTerm,
-        tag: initialTag !== "All" ? initialTag : undefined,
-      }),
-    initialData:
-      currentPage === 1 && debouncedSearchTerm === "" ? initialData : undefined,
-    placeholderData: (prev) => prev,
+  const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+    setInputValue(value);
+    debouncedSearch(value);
+  };
+  const debouncedSearch = useDebouncedCallback((value: string) => {
+    setSearch(value);
+    setCurrentPage(1);
+  }, 1000);
+
+  const { data, isLoading, isError, isSuccess } = useQuery({
+    queryKey: ["notes", currentPage, search, tag],
+    queryFn: () => fetchNotes(currentPage, 12, search, tag),
+    placeholderData: keepPreviousData,
+    initialData: currentPage === 1 && search === "" ? initialData : undefined,
   });
 
-  const handleSearch = (term: string) => {
-    setSearchTerm(term);
-    setCurrentPage(1);
-  };
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const openModal = () => setIsModalOpen(true);
+  const closeModal = () => setIsModalOpen(false);
 
-  if (isLoading) return <div>Loading...</div>;
-  if (error) return <div>Error loading notes</div>;
+  const notes: Note[] = data?.notes ?? [];
+  const totalPages: number = data?.totalPages ?? 1;
 
-  const notes = notesData?.data || [];
-  const totalPages = notesData?.total_pages || 0;
+  useEffect(() => {
+    if (isSuccess && !isLoading && notes.length === 0) {
+      toast.error("No notes found for your request.");
+    }
+  }, [isSuccess, isLoading, notes.length]);
 
   return (
     <div className={css.app}>
       <header className={css.toolbar}>
-        <SearchBox onSearch={handleSearch} />
+        <SearchBox value={inputValue} onChange={handleSearchChange} />
         {totalPages > 1 && (
           <Pagination
-            totalPages={totalPages}
-            currentPage={currentPage}
+            page={currentPage}
+            pageCount={totalPages}
             onPageChange={setCurrentPage}
           />
         )}
-        <button onClick={() => setIsModalOpen(true)} className={css.button}>
+        <button className={css.button} onClick={openModal}>
           Create note +
         </button>
       </header>
-
+      <Toaster position="top-center" />
+      {isLoading && <Loader />}
+      {isError && <ErrorMessage />}
       {notes.length > 0 && <NoteList notes={notes} />}
-
       {isModalOpen && (
-        <NoteModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}>
-          <NoteForm
-            onSuccess={() => setIsModalOpen(false)}
-            onCancel={() => setIsModalOpen(false)}
-          />
-        </NoteModal>
+        <Modal onClose={closeModal}>
+          <NoteForm onCloseModal={closeModal} />
+        </Modal>
       )}
     </div>
   );
-};
-
-export default NotesClient;
+}

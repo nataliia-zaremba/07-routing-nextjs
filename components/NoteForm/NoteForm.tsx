@@ -1,68 +1,84 @@
+import css from "./NoteForm.module.css";
+import { useId } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Formik, Form, Field, ErrorMessage } from "formik";
+import type { FormikHelpers } from "formik";
 import * as Yup from "yup";
-import { createNote } from "../../lib/api";
-import type { CreateNoteRequest } from "../../types/note";
-import css from "./NoteForm.module.css";
+import type { NoteTag } from "../../types/note";
+import type { NewNoteData } from "../../types/note";
+import { createNote } from "@/lib/api";
 
 interface NoteFormProps {
-  onSuccess: () => void;
-  onCancel: () => void;
+  onCloseModal: () => void;
 }
 
-const validationSchema = Yup.object({
-  title: Yup.string()
-    .min(3, "Title must be at least 3 characters")
-    .max(50, "Title must be at most 50 characters")
-    .required("Title is required"),
-  content: Yup.string().max(500, "Content must be at most 500 characters"),
-  tag: Yup.string()
-    .oneOf(["Todo", "Work", "Personal", "Meeting", "Shopping"], "Invalid tag")
-    .required("Tag is required"),
-});
+interface FormValues {
+  title: string;
+  content: string;
+  tag: NoteTag;
+}
 
-const initialValues: CreateNoteRequest = {
+const initialValues: FormValues = {
   title: "",
   content: "",
   tag: "Todo",
 };
 
-const NoteForm: React.FC<NoteFormProps> = ({ onSuccess, onCancel }) => {
-  const queryClient = useQueryClient();
+const NoteFormSchema = Yup.object().shape({
+  title: Yup.string()
+    .min(3, "Title must be at least 3 characters")
+    .max(50, "Title is too long")
+    .required("Title is required"),
+  content: Yup.string().max(500, "Content must be at most 500 character"),
+  tag: Yup.string()
+    .oneOf(["Todo", "Work", "Personal", "Meeting", "Shopping"])
+    .required("Tag is required"),
+});
 
-  const createMutation = useMutation({
-    mutationFn: createNote,
-    onSuccess: () => {
+export default function NoteForm({ onCloseModal }: NoteFormProps) {
+  const queryClient = useQueryClient();
+  const { mutate, isPending } = useMutation({
+    mutationFn: (noteData: NewNoteData) => createNote(noteData),
+    onSuccess() {
       queryClient.invalidateQueries({ queryKey: ["notes"] });
-      onSuccess();
+      onCloseModal();
     },
   });
+  const fieldId = useId();
 
-  const handleSubmit = (values: CreateNoteRequest) => {
-    createMutation.mutate(values);
+  const handleSubmit = (
+    values: NewNoteData,
+    actions: FormikHelpers<NewNoteData>
+  ) => {
+    mutate(values);
+    actions.resetForm();
   };
 
   return (
-    <Formik<CreateNoteRequest>
+    <Formik
       initialValues={initialValues}
-      validationSchema={validationSchema}
       onSubmit={handleSubmit}
+      validationSchema={NoteFormSchema}
     >
-      {({ isSubmitting }) => (
+      {({ isValid, isSubmitting }) => (
         <Form className={css.form}>
           <div className={css.formGroup}>
-            <label htmlFor="title">Title</label>
-            <Field id="title" type="text" name="title" className={css.input} />
+            <label htmlFor={`${fieldId}-title`}>Title</label>
+            <Field
+              id={`${fieldId}-title`}
+              name="title"
+              type="text"
+              className={css.input}
+            />
             <ErrorMessage name="title" component="span" className={css.error} />
           </div>
-
           <div className={css.formGroup}>
-            <label htmlFor="content">Content</label>
+            <label htmlFor={`${fieldId}-content`}>Content</label>
             <Field
               as="textarea"
-              id="content"
+              id={`${fieldId}-content`}
               name="content"
-              rows={8}
+              rows="8"
               className={css.textarea}
             />
             <ErrorMessage
@@ -71,10 +87,14 @@ const NoteForm: React.FC<NoteFormProps> = ({ onSuccess, onCancel }) => {
               className={css.error}
             />
           </div>
-
           <div className={css.formGroup}>
-            <label htmlFor="tag">Tag</label>
-            <Field as="select" id="tag" name="tag" className={css.select}>
+            <label htmlFor={`${fieldId}-tag`}>Tag</label>
+            <Field
+              as="select"
+              id={`${fieldId}-tag`}
+              name="tag"
+              className={css.select}
+            >
               <option value="Todo">Todo</option>
               <option value="Work">Work</option>
               <option value="Personal">Personal</option>
@@ -83,19 +103,18 @@ const NoteForm: React.FC<NoteFormProps> = ({ onSuccess, onCancel }) => {
             </Field>
             <ErrorMessage name="tag" component="span" className={css.error} />
           </div>
-
           <div className={css.actions}>
             <button
               type="button"
               className={css.cancelButton}
-              onClick={onCancel}
+              onClick={onCloseModal}
             >
               Cancel
             </button>
             <button
               type="submit"
               className={css.submitButton}
-              disabled={isSubmitting || createMutation.isPending}
+              disabled={!isValid || isSubmitting || isPending}
             >
               Create note
             </button>
@@ -104,6 +123,4 @@ const NoteForm: React.FC<NoteFormProps> = ({ onSuccess, onCancel }) => {
       )}
     </Formik>
   );
-};
-
-export default NoteForm;
+}

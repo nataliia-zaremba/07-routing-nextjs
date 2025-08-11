@@ -1,60 +1,27 @@
-import { type ReactNode, useEffect, useRef } from "react";
-import { createPortal } from "react-dom";
+"use client";
+
 import css from "./Modal.module.css";
 
-interface ModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  children: ReactNode;
-}
+import { useRouter } from "next/navigation";
 
-const Modal: React.FC<ModalProps> = ({ isOpen, onClose, children }) => {
-  const originalOverflowRef = useRef<string>("");
+type Props = {
+  children: React.ReactNode;
+};
 
-  useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
+const Modal = ({ children }: Props) => {
+  const router = useRouter();
 
-    if (isOpen) {
-      // Зберігаємо оригінальний overflow
-      originalOverflowRef.current = document.body.style.overflow;
+  const close = () => router.back();
 
-      // Додаємо event listener та блокуємо скрол
-      document.addEventListener("keydown", handleEsc);
-      document.body.style.overflow = "hidden";
-    }
-
-    // Cleanup функція
-    return () => {
-      document.removeEventListener("keydown", handleEsc);
-      if (isOpen) {
-        // Відновлюємо оригінальний overflow
-        document.body.style.overflow = originalOverflowRef.current;
-      }
-    };
-  }, [isOpen, onClose]);
-
-  if (!isOpen) return null;
-
-  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) {
-      onClose();
-    }
-  };
-
-  return createPortal(
-    <div
-      className={css.backdrop}
-      onClick={handleBackdropClick}
-      role="dialog"
-      aria-modal="true"
-    >
-      <div className={css.modal}>{children}</div>
-    </div>,
-    document.body
+  return (
+    <div className={css.backdrop}>
+      <div className={css.modal}>
+        {children}
+        <button className={css.button} onClick={close}>
+          Close
+        </button>
+      </div>
+    </div>
   );
 };
 
